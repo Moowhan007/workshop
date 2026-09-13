@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Dashboard ของคุณบน Get-Study! — AI Learning Platform สำหรับนิสิต อาจารย์ และผู้ปกครอง"
+  />
+  <title>Dashboard — Get-Study!</title>
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2316a34a'/%3E%3Cpath d='M8 10h16v3H8zM8 15h16v3H8zM8 20h10v3H8z' fill='white'/%3E%3C/svg%3E"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-auth="protected" class="dashboard-page">
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#main" class="brand">Get-Study!</a>
+      <nav aria-label="เมนู">
+        <ul class="nav-links">
+          <li><a href="index.html">หน้าแรก</a></li>
+          <li><a href="role.html">เปลี่ยนบทบาท</a></li>
+          <li><a href="#" onclick="logout()">ออกจากระบบ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="container dash-main">
+    <section class="dash-hero">
+      <span class="eyebrow" id="dash-role"></span>
+      <h1 id="dash-greeting">ยินดีต้อนรับ</h1>
+      <p class="dash-email" id="dash-email"></p>
+      <p class="dash-note">
+        ระบบกำลังเชื่อมข้อมูล Google Classroom และ Gemini AI
+        ฟีเจอร์ด้านล่างจะพร้อมใช้งานในเวอร์ชันถัดไป
+      </p>
+    </section>
+
+    <div class="dash-grid" id="dash-grid">
+      <article class="dash-card">
+        <span class="dash-chip">เร็ว ๆ นี้</span>
+        <h2>ดูงานทั้งหมดแบบสรุป</h2>
+        <p>รวมงานจากทุกวิชาในที่เดียว เห็นชัดเจนว่าส่งครบหรือยัง</p>
+      </article>
+      <article class="dash-card">
+        <span class="dash-chip">เร็ว ๆ นี้</span>
+        <h2>ถาม AI ช่วยการเรียน</h2>
+        <p>ถามได้ทุกเรื่อง ทั้งสรุปบทเรียน วิธีทำการบ้าน และวางตารางอ่าน</p>
+      </article>
+      <article class="dash-card">
+        <span class="dash-chip">เร็ว ๆ นี้</span>
+        <h2>แจ้งเตือนเดดไลน์</h2>
+        <p>รู้ล่วงหน้าว่าเมื่อไหร่ต้องส่งงาน และสอบเมื่อไร</p>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <div class="container">
+        <p>© 2026 Get-Study! สงวนลิขสิทธิ์</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="auth.js"></script>
+  <script>
+    const currentUser = getCurrentUser();
+    const role = currentUser && ROLES[currentUser.role] ? currentUser.role : "student";
+    const info = ROLES[role];
+    document.getElementById("dash-role").textContent = info.label;
+    document.getElementById("dash-greeting").textContent = "ยินดีต้อนรับ " + info.label;
+    document.getElementById("dash-email").textContent = currentUser.email;
+  </script>
+</body>
+</html>

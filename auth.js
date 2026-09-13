@@ -1,5 +1,23 @@
 const STORAGE_KEY = "getstudy_user";
 
+const ROLES = {
+  student: {
+    label: "นิสิต",
+    title: "เข้าสู่ระบบสำหรับนิสิต",
+    lead: "ดูงานทั้งหมด ถาม AI เกี่ยวกับการบ้านและตารางการเรียน"
+  },
+  teacher: {
+    label: "อาจารย์",
+    title: "เข้าสู่ระบบสำหรับอาจารย์",
+    lead: "จัดการงานและตรวจส่งได้เร็วขึ้นด้วย AI"
+  },
+  parent: {
+    label: "ผู้ปกครอง",
+    title: "เข้าสู่ระบบสำหรับผู้ปกครอง",
+    lead: "ติดตามความคืบหน้าการส่งงานของบุตรหลาน"
+  }
+};
+
 function getCurrentUser() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -7,6 +25,11 @@ function getCurrentUser() {
   } catch (error) {
     return null;
   }
+}
+
+function getRoleFromUrl() {
+  const role = new URLSearchParams(location.search).get("role");
+  return ROLES[role] ? role : null;
 }
 
 function requireLogin() {
@@ -28,25 +51,45 @@ function handleLoginSubmit(event) {
     return;
   }
 
+  const role = getRoleFromUrl() || "student";
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ email: email, at: new Date().toISOString() })
+    JSON.stringify({ email: email, role: role, at: new Date().toISOString() })
   );
-  location.href = "index.html";
+  location.href = "dashboard.html";
 }
 
 function logout() {
   localStorage.removeItem(STORAGE_KEY);
-  location.replace("login.html");
+  location.replace("role.html");
+}
+
+function applyRoleToLoginPage() {
+  const role = getRoleFromUrl();
+  if (!role) {
+    location.replace("role.html");
+    return;
+  }
+  const info = ROLES[role];
+  const title = document.getElementById("login-title");
+  const lead = document.getElementById("login-lead");
+  if (title) {
+    title.textContent = info.title;
+  }
+  if (lead) {
+    lead.textContent = info.lead;
+  }
 }
 
 function initAuth() {
-  if (document.body && document.body.dataset.auth === "protected") {
-    requireLogin();
-  }
   const loginForm = document.getElementById("login-form");
   if (loginForm) {
+    applyRoleToLoginPage();
     loginForm.addEventListener("submit", handleLoginSubmit);
+    return;
+  }
+  if (document.body && document.body.dataset.auth === "protected") {
+    requireLogin();
   }
 }
 
