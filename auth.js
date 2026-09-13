@@ -32,10 +32,32 @@ function getRoleFromUrl() {
   return ROLES[role] ? role : null;
 }
 
-function requireLogin() {
-  if (!getCurrentUser()) {
-    location.replace("login.html");
+function tryDemoAccess() {
+  const role = getRoleFromUrl();
+  if (!role) {
+    return false;
   }
+  if (!getCurrentUser()) {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        email: role + "@demo.ku.th",
+        role: role,
+        at: new Date().toISOString()
+      })
+    );
+  }
+  return true;
+}
+
+function requireLogin() {
+  if (getCurrentUser()) {
+    return;
+  }
+  if (tryDemoAccess()) {
+    return;
+  }
+  location.replace("login.html");
 }
 
 function handleLoginSubmit(event) {

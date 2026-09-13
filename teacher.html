@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Teacher Dashboard — EduFlow AI AI Learning Platform ตัวอย่างภาพรวมการเรียนสำหรับอาจารย์"
+  />
+  <title>Teacher Dashboard — EduFlow AI</title>
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23005bab'/%3E%3Cpath d='M8 10h16v3H8zM8 15h16v3H8zM8 20h10v3H8z' fill='white'/%3E%3C/svg%3E"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="dashboard-page">
+  <header class="site-header demo-nav">
+    <div class="container header-inner">
+      <a href="index.html" class="brand">EduFlow AI</a>
+      <nav aria-label="เมนูหลัก">
+        <ul class="nav-links">
+          <li><a href="index.html">หน้าแรก</a></li>
+          <li><a href="teacher.html" aria-current="page">Teacher</a></li>
+          <li><a href="student.html">Student</a></li>
+          <li><a href="parent.html">Parent</a></li>
+          <li><a href="risk.html">ความเสี่ยง</a></li>
+          <li><a href="analytics.html">Analytics</a></li>
+          <li><a href="classroom.html">Classroom</a></li>
+          <li><a href="teams.html">Teams</a></li>
+          <li><a href="#" onclick="logout(); return false;">ออกจากระบบ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container main-demo">
+    <section class="page-head">
+      <span class="eyebrow">Teacher Dashboard</span>
+      <h1>ภาพรวมการเรียนของคุณ</h1>
+      <p class="page-lead">ดูสถานะนิสิต การส่งงาน และคะแนนเฉลี่ยของทุกรายวิชา พร้อมคัดนิสิตที่มีความเสี่ยงให้ AI วิเคราะห์ให้อัตโนมัติ</p>
+    </section>
+    <div id="app"></div>
+  </main>
+
+  <footer class="demo-footer">
+    <p>© 2026 EduFlow AI — AI Learning Platform · Demo เพื่อการนำเสนอ</p>
+  </footer>
+
+  <script src="auth.js"></script>
+  <script src="data.js"></script>
+  <script src="demo.js"></script>
+  <script>
+    document.getElementById("app").innerHTML = renderTeacherPage();
+  </script>
+</body>
+</html>
