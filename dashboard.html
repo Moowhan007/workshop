@@ -33,29 +33,9 @@
       <span class="eyebrow" id="dash-role"></span>
       <h1 id="dash-greeting">ยินดีต้อนรับ</h1>
       <p class="dash-email" id="dash-email"></p>
-      <p class="dash-note">
-        ระบบกำลังเชื่อมข้อมูล Google Classroom และ Gemini AI
-        ฟีเจอร์ด้านล่างจะพร้อมใช้งานในเวอร์ชันถัดไป
-      </p>
     </section>
 
-    <div class="dash-grid" id="dash-grid">
-      <article class="dash-card">
-        <span class="dash-chip">เร็ว ๆ นี้</span>
-        <h2>ดูงานทั้งหมดแบบสรุป</h2>
-        <p>รวมงานจากทุกวิชาในที่เดียว เห็นชัดเจนว่าส่งครบหรือยัง</p>
-      </article>
-      <article class="dash-card">
-        <span class="dash-chip">เร็ว ๆ นี้</span>
-        <h2>ถาม AI ช่วยการเรียน</h2>
-        <p>ถามได้ทุกเรื่อง ทั้งสรุปบทเรียน วิธีทำการบ้าน และวางตารางอ่าน</p>
-      </article>
-      <article class="dash-card">
-        <span class="dash-chip">เร็ว ๆ นี้</span>
-        <h2>แจ้งเตือนเดดไลน์</h2>
-        <p>รู้ล่วงหน้าว่าเมื่อไหร่ต้องส่งงาน และสอบเมื่อไร</p>
-      </article>
-    </div>
+    <div id="dash-content"></div>
   </main>
 
   <footer class="site-footer">
@@ -67,13 +47,266 @@
   </footer>
 
   <script src="auth.js"></script>
+  <script src="data.js"></script>
   <script>
-    const currentUser = getCurrentUser();
-    const role = currentUser && ROLES[currentUser.role] ? currentUser.role : "student";
-    const info = ROLES[role];
-    document.getElementById("dash-role").textContent = info.label;
-    document.getElementById("dash-greeting").textContent = "ยินดีต้อนรับ " + info.label;
-    document.getElementById("dash-email").textContent = currentUser.email;
+    function esc(value) {
+      return String(value).replace(/[&<>"']/g, function (ch) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+      });
+    }
+
+    function statCard(value, label) {
+      return '<div class="stat-card"><div class="stat-value">' + value + '</div><div class="stat-label">' + label + "</div></div>";
+    }
+
+    function barRow(label, value, percent) {
+      return '<div class="bar-row"><div class="bar-label">' + esc(label) + '</div><div class="bar-track"><div class="bar-fill" style="width:' + percent + '%"></div></div><div class="bar-val">' + value + "</div></div>";
+    }
+
+    function riskBadge(risk) {
+      return '<span class="risk-badge ' + risk.levelCls + '">' + risk.levelLabel + "</span>";
+    }
+
+    function emptyNote(text) {
+      return '<p class="empty-note">' + esc(text) + "</p>";
+    }
+
+    function renderTeacherDashboard(db, teacher) {
+      const analytics = teacherAnalytics(db, teacher.id);
+      let html = '';
+
+      html += '<div class="dash-stats">';
+      html += statCard(analytics.courses.length, "จำนวนรายวิชา");
+      html += statCard(analytics.studentCount, "จำนวนนักเรียน");
+      html += statCard(analytics.assignmentCount, "จำนวนงาน");
+      html += statCard(analytics.pendingCount, "งานค้างตรวจ");
+      html += statCard(analytics.avgScore, "คะแนนเฉลี่ย");
+      html += "</div>";
+
+      html += '<div class="dash-cols">';
+      html += '<div class="dash-panel"><h2>อัตราการส่งงานแยกวิชา</h2>';
+      if (analytics.perCourse.length) {
+        analytics.perCourse.forEach(function (item) {
+          html += barRow(item.course.code + " " + item.course.title, item.submissionRate + "%", item.submissionRate);
+        });
+      } else {
+        html += emptyNote("ยังไม่มีรายวิชา");
+      }
+      html += "</div>";
+
+      html += '<div class="dash-panel"><h2>ประสิทธิภาพรายวิชา (คะแนนเฉลี่ย)</h2>';
+      if (analytics.perCourse.length) {
+        analytics.perCourse.forEach(function (item) {
+          html += barRow(item.course.code + " " + item.course.title, item.avgScore + " / 100", item.avgScore);
+        });
+      } else {
+        html += emptyNote("ยังไม่มีรายวิชา");
+      }
+      html += "</div>";
+      html += "</div>";
+
+      const pendingRows = analytics.submissions.filter(function (submission) {
+        return submission.score === null || submission.score === undefined;
+      });
+      html += '<div class="dash-panel"><h2>งานที่รอตรวจ</h2>';
+      if (pendingRows.length) {
+        html += '<div class="list-group">';
+        pendingRows.forEach(function (row) {
+          const assignment = findByAssignment(db, row.assignmentId);
+          const course = courseById(db, assignment.courseId);
+          const student = findUserById(db, row.studentId);
+          html += '<div class="list-row"><div><strong>' + esc(assignment.title) + "</strong><br><small>" +
+            esc(student.name) + " · " + esc(course.code) + "</small></div><span class='status-badge badge-late'>รอตรวจ</span></div>";
+        });
+        html += "</div>";
+      } else {
+        html += emptyNote("ไม่มีงานค้างตรวจ ขอชื่นชม!");
+      }
+      html += "</div>";
+
+      html += '<div class="dash-panel"><h2>นักเรียนกลุ่มเสี่ยง</h2>';
+      if (analytics.atRiskStudents.length) {
+        html += '<div class="list-group">';
+        analytics.atRiskStudents.forEach(function (item) {
+          html += '<div class="list-row"><div><strong>' + esc(item.student.name) + "</strong><br><small>เข้าเรียน " +
+            item.risk.attendancePct + "% · ค้าง " + item.risk.overdueCount + " งาน</small></div>" +
+            riskBadge(item.risk) + "</div>";
+        });
+        html += "</div>";
+      } else {
+        html += emptyNote("ยังไม่มีข้อมูลนักเรียน");
+      }
+      html += "</div>";
+
+      return html;
+    }
+
+    function renderStudentDashboard(db, student) {
+      const rows = assignmentsWithStatusFor(db, student.id);
+      const attendance = attendanceRate(db, student.id);
+      const latest = latestScoredSubmission(db, student.id);
+      const upcoming = upcomingAssignments(db, student.id, 7);
+      const scored = scoredSubmissionsForStudent(db, student.id);
+      const submittedCount = rows.filter(function (row) {
+        return row.status === "submitted";
+      }).length;
+      const missingCount = rows.filter(function (row) {
+        return row.status === "missing";
+      }).length;
+
+      let html = "";
+      html += '<div class="dash-stats">';
+      html += statCard(rows.length, "งานที่ได้รับ");
+      html += statCard(submittedCount, "ส่งแล้ว");
+      html += statCard(missingCount, "ยังไม่ส่ง");
+      html += statCard(latest ? latest.score : "-", "คะแนนล่าสุด");
+      html += statCard(attendance.pct + "%", "อัตราการเข้าเรียน");
+      html += "</div>";
+
+      html += '<div class="dash-cols">';
+      html += '<div class="dash-panel"><h2>งานใกล้ครบกำหนด (7 วัน)</h2>';
+      if (upcoming.length) {
+        html += '<div class="list-group">';
+        upcoming.forEach(function (row) {
+          html += '<div class="list-row"><div><strong>' + esc(row.assignment.title) + "</strong><br><small>" +
+            esc(row.course.code) + " · ครบกำหนด " + fmtDate(row.assignment.dueDate) + "</small></div>" +
+            '<span class="status-badge badge-missing">ยังไม่ส่ง</span></div>';
+        });
+        html += "</div>";
+      } else {
+        html += emptyNote("ไม่มีงานใกล้ครบกำหนดในเร็ว ๆ นี้");
+      }
+      html += "</div>";
+
+      html += '<div class="dash-panel"><h2>Feedback จาก AI</h2>';
+      if (latest && latest.feedback) {
+        html += '<div class="ai-box"><p>' + esc(latest.feedback) + "</p><small>จากงาน " + esc(findByAssignment(db, latest.assignmentId).title) + "</small></div>";
+      } else {
+        html += emptyNote("ยังไม่มี feedback ล่าสุดจาก AI");
+      }
+      html += "</div>";
+      html += "</div>";
+
+      html += '<div class="dash-panel"><h2>งานทั้งหมด</h2>';
+      if (rows.length) {
+        html += '<table class="dash-table"><thead><tr><th>รายวิชา</th><th>งาน</th><th>ครบกำหนด</th><th>คะแนน</th><th>สถานะ</th></tr></thead><tbody>';
+        rows.forEach(function (row) {
+          html += "<tr><td>" + esc(row.course.code) + "</td><td>" + esc(row.assignment.title) +
+            "</td><td>" + fmtDate(row.assignment.dueDate) + "</td><td>" +
+            (row.submission && row.submission.score !== null ? row.submission.score : "-") +
+            '</td><td><span class="status-badge ' + row.statusCls + '">' + row.statusLabel + "</span></td></tr>";
+        });
+        html += "</tbody></table>";
+      } else {
+        html += emptyNote("ยังไม่มีงาน");
+      }
+      html += "</div>";
+
+      html += '<div class="dash-panel"><h2>ระดับความเสี่ยง</h2>' + riskBadge(computeRisk(db, student.id)) + "</div>";
+
+      return html;
+    }
+
+    function renderParentDashboard(db, parent) {
+      const linkedEmail = parent.linkedStudentEmail;
+      let child = null;
+      if (linkedEmail) {
+        child = findByEmail(db, linkedEmail);
+      }
+      if (!child) {
+        return '<div class="dash-panel"><h2>เชื่อมต่อบุตรหลาน</h2>' +
+          emptyNote("ยังไม่มีการเชื่อมอีเมลบุตรหลาน ระบบจะช่วยให้คุณติดตามการส่งงานและการเรียนเมื่อเชื่อมต่อแล้ว") + "</div>";
+      }
+
+      const risk = computeRisk(db, child.id);
+      const attendance = attendanceRate(db, child.id);
+      const rows = assignmentsWithStatusFor(db, child.id);
+      const overdueRows = rows.filter(function (row) {
+        return row.status === "missing" || row.status === "late";
+      });
+      const latest = latestScoredSubmission(db, child.id);
+      const scored = scoredSubmissionsForStudent(db, child.id);
+      const alerts = parentAlerts(db, child.id);
+
+      let html = "";
+      html += '<div class="dash-panel dash-child-head"><h2>บุตรหลานของคุณ</h2><p>' + esc(child.name) +
+        " (" + esc(child.email) + ")</p>" + riskBadge(risk) + "</div>";
+
+      html += '<div class="dash-stats">';
+      html += statCard(risk.avgScore, "คะแนนเฉลี่ย");
+      html += statCard(attendance.pct + "%", "การเข้าเรียน");
+      html += statCard(overdueRows.length, "งานค้างส่ง");
+      html += statCard(latest ? latest.score : "-", "คะแนนล่าสุด");
+      html += statCard(RISK_META[risk.level].label, "ระดับความเสี่ยง");
+      html += "</div>";
+
+      html += '<div class="dash-cols">';
+      html += '<div class="dash-panel"><h2>การแจ้งเตือน</h2>';
+      if (alerts.length) {
+        html += '<ul class="alert-list">';
+        alerts.forEach(function (alertItem) {
+          html += '<li class="alert-item">' + esc(alertItem.text) + "</li>";
+        });
+        html += "</ul>";
+      } else {
+        html += emptyNote("ไม่มีการแจ้งเตือนใหม่");
+      }
+      html += "</div>";
+
+      html += '<div class="dash-panel"><h2>สถานะงานล่าสุด</h2>';
+      if (rows.length) {
+        html += '<div class="list-group">';
+        rows.slice(0, 6).forEach(function (row) {
+          html += '<div class="list-row"><div><strong>' + esc(row.assignment.title) + "</strong><br><small>" +
+            esc(row.course.code) + " · " + fmtDate(row.assignment.dueDate) + "</small></div>" +
+            '<span class="status-badge ' + row.statusCls + '">' + row.statusLabel + "</span></div>";
+        });
+        html += "</div>";
+      } else {
+        html += emptyNote("ยังไม่มีงาน");
+      }
+      html += "</div>";
+      html += "</div>";
+
+      if (scored.length) {
+        html += '<div class="dash-panel"><h2>คะแนนย้อนหลัง</h2>';
+        html += '<div class="list-group">';
+        scored.slice(0, 5).forEach(function (submission) {
+          const assignment = findByAssignment(db, submission.assignmentId);
+          html += '<div class="list-row"><div><strong>' + esc(assignment.title) + "</strong><br><small>" +
+            fmtDate(submission.submittedAt) + "</small></div><span class='score-badge'>" + submission.score + " / " + assignment.points + "</span></div>";
+        });
+        html += "</div></div>";
+      }
+
+      return html;
+    }
+
+    function renderDashboard() {
+      const user = getCurrentUser();
+      if (!user) {
+        return;
+      }
+      const db = findAll();
+      let record = findByEmail(db, user.email);
+      if (!record) {
+        record = createUser(user.email, user.role);
+      }
+      const info = ROLES[record.role] || ROLES.student;
+      document.getElementById("dash-role").textContent = info.label;
+      document.getElementById("dash-greeting").textContent = "ยินดีต้อนรับ " + info.label;
+      document.getElementById("dash-email").textContent = record.name + " · " + record.email;
+
+      const renderers = {
+        teacher: renderTeacherDashboard,
+        student: renderStudentDashboard,
+        parent: renderParentDashboard
+      };
+      const renderer = renderers[record.role] || renderStudentDashboard;
+      document.getElementById("dash-content").innerHTML = renderer(db, record);
+    }
+
+    renderDashboard();
   </script>
 </body>
 </html>
