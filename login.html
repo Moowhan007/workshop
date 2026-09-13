@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="เข้าสู่ระบบ Get-Study! ผู้ช่วย AI ในการเรียนสำหรับนักศึกษามหาวิทยาลัยเกษตรศาสตร์"
+  />
+  <title>เข้าสู่ระบบ — Get-Study!</title>
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2316a34a'/%3E%3Cpath d='M8 10h16v3H8zM8 15h16v3H8zM8 20h10v3H8z' fill='white'/%3E%3C/svg%3E"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <a href="login.html" class="brand">Get-Study!</a>
+    <h1>เข้าสู่ระบบ</h1>
+    <p class="login-lead">กรอกอีเมลของคุณเพื่อเข้าใช้งานเว็บไซต์</p>
+
+    <form class="login-form" id="login-form" novalidate>
+      <div class="login-field">
+        <label for="login-email">อีเมล</label>
+        <input
+          id="login-email"
+          name="email"
+          type="email"
+          autocomplete="email"
+          placeholder="name@ku.th"
+          maxlength="254"
+          required
+        />
+      </div>
+      <p class="login-error" id="login-error" role="alert"></p>
+      <button type="submit" class="btn btn-primary btn-lg">เข้าสู่ระบบ</button>
+    </form>
+
+    <p class="login-hint">แนะนำใช้อีเมล @ku.th เพื่อสิทธิประโยชน์ครบถ้วน</p>
+    <p class="login-footnote">
+      เวอร์ชันนี้เป็นการเข้าสู่ระบบแบบจำลอง ระบบรหัสผ่านจริงกับ
+      Microsoft Teams และ Google Classroom จะมาในเวอร์ชันถัดไป
+    </p>
+  </main>
+
+  <script src="auth.js"></script>
+</body>
+</html>

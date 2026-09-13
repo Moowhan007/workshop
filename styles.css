@@ -650,6 +650,122 @@ main:focus {
   color: #94a3b8;
 }
 
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+  background: linear-gradient(160deg, var(--mist) 0%, var(--white) 60%);
+  position: relative;
+}
+
+.login-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--sprout) 2px, transparent 2px);
+  background-size: 28px 28px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--amber);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 2.75rem 2rem;
+}
+
+.login-card .brand {
+  display: inline-block;
+  margin-bottom: 1.5rem;
+  font-size: 1.6rem;
+}
+
+.login-card h1 {
+  font-size: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.login-lead {
+  color: var(--slate);
+  margin-bottom: 1.75rem;
+}
+
+.login-field {
+  margin-bottom: 0.25rem;
+}
+
+.login-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.login-field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.7rem 1rem;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--white);
+  transition: border-color 0.15s;
+}
+
+.login-field input:hover {
+  border-color: #cbd5e1;
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: var(--leaf);
+}
+
+.login-field input:focus-visible {
+  outline: 3px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.login-field input::placeholder {
+  color: #94a3b8;
+}
+
+.login-error {
+  min-height: 1.25rem;
+  color: #b91c1c;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.4rem 0 0.75rem;
+}
+
+.login-form .btn {
+  width: 100%;
+}
+
+.login-hint {
+  margin-top: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--slate);
+  text-align: center;
+}
+
+.login-footnote {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--line);
+  font-size: 0.78rem;
+  color: var(--slate);
+  text-align: center;
+}
+
 @media (max-width: 960px) {
   .services-grid {
     grid-template-columns: repeat(2, 1fr);
