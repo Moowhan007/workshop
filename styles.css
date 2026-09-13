@@ -377,6 +377,51 @@ main:focus {
   justify-content: center;
 }
 
+.hero-inner--picker {
+  display: block;
+  max-width: 58rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.hero-sub--center {
+  margin-inline: auto;
+}
+
+.hero-actions--center {
+  justify-content: center;
+}
+
+.hero-roles {
+  margin-top: 3rem;
+  text-align: left;
+}
+
+.hero .role-card {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.hero .role-card:hover {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 22px 40px -18px rgba(0, 0, 0, 0.45);
+}
+
+.hero .role-card h2 {
+  color: var(--canvas);
+}
+
+.hero .role-card p {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.hero .role-link {
+  color: var(--accent-sky);
+}
+
 .app-card {
   width: 100%;
   max-width: 410px;

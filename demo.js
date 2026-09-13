@@ -510,7 +510,7 @@ function renderClassroomPage() {
     '<section class="connect-hero">' +
     '<div class="connect-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>' +
     "<h1>Connected Google Classroom</h1>" +
-    '<p class="muted">EduFlow AI เชื่อมต่อกับ Google Classroom เพื่อดึงข้อมูลงานและการส่งงานโดยอัตโนมัติ</p>' +
+    '<p class="muted">GET-STUDY เชื่อมต่อกับ Google Classroom เพื่อดึงข้อมูลงานและการส่งงานโดยอัตโนมัติ</p>' +
     '<span class="badge badge-green">สถานะ: ออนไลน์</span>' +
     '<p class="muted">ซิงค์ล่าสุด: ' + esc(c.lastSync) + "</p>" +
     "</section>" +
@@ -531,7 +531,7 @@ function renderTeamsPage() {
     '<section class="connect-hero">' +
     '<div class="connect-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>' +
     "<h1>Connected Microsoft Teams</h1>" +
-    '<p class="muted">EduFlow AI เชื่อมต่อกับ Microsoft Teams เพื่อจัดการการเรียนและการส่งงานผ่าน Teams Classes</p>' +
+    '<p class="muted">GET-STUDY เชื่อมต่อกับ Microsoft Teams เพื่อจัดการการเรียนและการส่งงานผ่าน Teams Classes</p>' +
     '<span class="badge badge-green">สถานะ: ออนไลน์</span>' +
     '<p class="muted">ซิงค์ล่าสุด: ' + esc(t.lastSync) + "</p>" +
     "</section>" +
@@ -561,7 +561,7 @@ function renderTeamsPage() {
 
 function pageShell(heading, lead, appHtml) {
   return (
-    '<section class="page-head"><span class="eyebrow">EduFlow AI</span>' +
+    '<section class="page-head"><span class="eyebrow">GET-STUDY</span>' +
     "<h1>" + esc(heading) + "</h1>" +
     '<p class="page-lead">' + esc(lead) + "</p></section>" +
     appHtml
