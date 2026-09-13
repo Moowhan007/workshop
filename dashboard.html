@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta
     name="description"
-    content="Dashboard ของคุณบน EduFlow AI — AI Learning Platform สำหรับนิสิต อาจารย์ และผู้ปกครอง"
+    content="Dashboard ของคุณบน EduFlow AI — ระบบจัดการรายวิชา งานมอบหมาย การส่งงาน การตรวจงาน และการวิเคราะห์ความเสี่ยง"
   />
   <title>Dashboard — EduFlow AI</title>
   <link
@@ -35,6 +35,7 @@
       <p class="dash-email" id="dash-email"></p>
     </section>
 
+    <nav class="dash-tabs" id="dash-tabs" aria-label="เมนูภายใน"></nav>
     <div id="dash-content"></div>
   </main>
 
@@ -49,6 +50,7 @@
   <script src="auth.js"></script>
   <script src="data.js"></script>
   <script>
+    /* ---------- utilities (เดิม) ---------- */
     function esc(value) {
       return String(value).replace(/[&<>"']/g, function (ch) {
         return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
@@ -71,6 +73,7 @@
       return '<p class="empty-note">' + esc(text) + "</p>";
     }
 
+    /* ---------- render ภาพรวม (เดิม เก็บไว้ใช้เป็น Tab ภาพรวม) ---------- */
     function renderTeacherDashboard(db, teacher) {
       const analytics = teacherAnalytics(db, teacher.id);
       let html = '';
@@ -282,6 +285,682 @@
       return html;
     }
 
+    /* =========================================================
+       ส่วนขยาย: ระบบจัดการรายวิชา / งานมอบหมาย / การส่ง / การตรวจ
+       ========================================================= */
+
+    const FILE_CAP = 1300000;
+    let dashDB = null;
+    let dashUser = null;
+    let dashCourseFilter = "all";
+    let dashGradeFilter = "";
+    let activeModal = null;
+
+    function toastMessage(message) {
+      let toast = document.getElementById("app-toast");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "app-toast";
+        toast.className = "toast";
+        toast.setAttribute("role", "status");
+        document.body.appendChild(toast);
+      }
+      toast.textContent = message;
+      toast.classList.add("show");
+      setTimeout(function () {
+        toast.classList.remove("show");
+      }, 2800);
+    }
+
+    function closeModal() {
+      if (activeModal) {
+        activeModal.remove();
+        activeModal = null;
+      }
+    }
+
+    function openModal(title, bodyHtml) {
+      closeModal();
+      const el = document.createElement("div");
+      el.className = "modal-backdrop open";
+      el.innerHTML =
+        '<div class="modal"><button type="button" class="modal-close" aria-label="ปิด">&times;</button>' +
+        "<h2>" + esc(title) + "</h2>" +
+        '<div class="modal-body">' + bodyHtml + "</div></div>";
+      el.querySelector(".modal-close").addEventListener("click", closeModal);
+      el.addEventListener("click", function (event) {
+        if (event.target === el) {
+          closeModal();
+        }
+      });
+      document.body.appendChild(el);
+      activeModal = el;
+      return el;
+    }
+
+    function readFileAsDataURL(file, callback) {
+      if (file.size > FILE_CAP) {
+        callback(null);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function () {
+        callback(reader.result);
+      };
+      reader.onerror = function () {
+        callback(null);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function fileChipHtml(fileName, fileType, fileSize, fileData) {
+      let html = '<span class="file-chip"><strong>' + esc(fileName) + "</strong>";
+      if (fileSize) {
+        html += " · " + Math.round(fileSize / 1024) + " KB";
+      }
+      if (fileType) {
+        html += " · " + esc(fileType.split("/").pop().toUpperCase());
+      }
+      html += "</span>";
+      if (fileData) {
+        html += ' <a class="link-btn" href="' + fileData + '" target="_blank" rel="noopener">เปิดดูไฟล์ ↗</a>';
+      }
+      return html;
+    }
+
+    function statusBadgeHtml(status) {
+      const meta = STATUS_META[status] || STATUS_META.missing;
+      return '<span class="status-badge ' + meta.cls + '">' + meta.label + "</span>";
+    }
+
+    const DASH_VIEWS = {
+      teacher: [
+        { key: "overview", label: "ภาพรวม", run: function () { return renderTeacherDashboard(dashDB, dashUser); } },
+        { key: "courses", label: "รายวิชา", run: renderTeacherCourses },
+        { key: "assignments", label: "งานมอบหมาย", run: renderTeacherAssignments },
+        { key: "grading", label: "ตรวจงาน", run: renderTeacherGrading },
+        { key: "risk", label: "นักเรียนเสี่ยง", run: renderTeacherRisk }
+      ],
+      student: [
+        { key: "overview", label: "ภาพรวม", run: function () { return renderStudentDashboard(dashDB, dashUser); } },
+        { key: "assignments", label: "งานของฉัน", run: renderStudentAssignments }
+      ],
+      parent: [
+        { key: "overview", label: "ภาพรวม", run: function () { return renderParentDashboard(dashDB, dashUser); } },
+        { key: "details", label: "รายละเอียด", run: renderParentDetails }
+      ]
+    };
+
+    function renderTab(viewKey) {
+      const views = DASH_VIEWS[dashUser.role];
+      const item = views.find(function (view) {
+        return view.key === viewKey;
+      }) || views[0];
+      const tabsHtml = views.map(function (view) {
+        return '<button type="button" class="dash-tab' + (view.key === item.key ? " active" : "") +
+          '" data-view="' + view.key + '">' + view.label + "</button>";
+      }).join("");
+      const tabBar = document.getElementById("dash-tabs");
+      tabBar.innerHTML = tabsHtml;
+      tabBar.querySelectorAll(".dash-tab").forEach(function (button) {
+        button.addEventListener("click", function () {
+          renderTab(button.dataset.view);
+        });
+      });
+      document.getElementById("dash-content").innerHTML = item.run();
+      installViewHandlers(item.key);
+    }
+
+    /* ---------- Teacher: รายวิชา ---------- */
+
+    function renderTeacherCourses() {
+      const db = dashDB;
+      const courses = coursesByTeacher(db, dashUser.id);
+      let html = '<div class="toolbar"><h2>รายวิชาของฉัน (' + courses.length + ")</h2>" +
+        '<button type="button" class="btn btn-primary btn-sm" id="btn-add-course">+ สร้างรายวิชา</button></div>';
+      if (!courses.length) {
+        html += emptyNote("ยังไม่มีรายวิชา — กดปุ่ม ‘สร้างรายวิชา’ เพื่อเริ่มต้น");
+      } else {
+        html += '<div class="dash-panel"><div class="table-wrap"><table class="dash-table"><thead><tr>' +
+          "<th>รหัส</th><th>รายวิชา</th><th>หมู่</th><th>นิสิต</th><th>งาน</th><th>จัดการ</th></tr></thead><tbody>";
+        courses.forEach(function (course) {
+          html += "<tr><td>" + esc(course.code) + "</td><td><strong>" + esc(course.title) + "</strong></td><td>" +
+            esc(course.section) + "</td><td>" + course.students.length + "</td><td>" +
+            assignmentsForCourse(db, course.id).length + "</td><td><div class='table-actions'>" +
+            '<button type="button" class="link-btn" data-enroll="' + esc(course.id) + '">เพิ่มนิสิต</button>' +
+            '<button type="button" class="link-btn" data-edit-course="' + esc(course.id) + '">แก้ไข</button>' +
+            '<button type="button" class="danger-link" data-del-course="' + esc(course.id) + '">ลบ</button>' +
+            "</div></td></tr>";
+        });
+        html += "</tbody></table></div></div>";
+      }
+      html += '<div class="dash-panel"><h2>วิธีใช้</h2><p class="muted">สร้างรายวิชา แล้วกด “เพิ่มนิสิต” เพื่อลงทะเบียนนิสิตเข้ารายวิชา — จากนั้นเข้า Tab “งานมอบหมาย” เพื่อสร้างงาน งานที่สร้างจะโผล่ใน Dashboard ของนิสิตทันที</p></div>';
+      return html;
+    }
+
+    function showCourseModal(courseId) {
+      const db = dashDB;
+      const course = courseId ? courseById(db, courseId) : null;
+      const body =
+        '<form id="course-form">' +
+        '<div class="form-row">' +
+        '<div class="form-field"><label class="form-label" for="f-code">รหัสวิชา</label><input class="form-input" id="f-code" value="' + esc(course ? course.code : "") + '" placeholder="01418112" required /></div>' +
+        '<div class="form-field"><label class="form-label" for="f-section">หมู่เรียน</label><input class="form-input" id="f-section" value="' + esc(course ? course.section : "") + '" placeholder="1" required /></div>' +
+        "</div>" +
+        '<div class="form-field"><label class="form-label" for="f-title">ชื่อรายวิชา</label><input class="form-input" id="f-title" value="' + esc(course ? course.title : "") + '" required /></div>' +
+        '<div class="modal-actions"><button type="button" class="btn btn-ghost" data-close>ยกเลิก</button>' +
+        '<button type="submit" class="btn btn-primary">' + (course ? "บันทึกการแก้ไข" : "สร้างรายวิชา") + "</button></div>" +
+        "</form>";
+      openModal(course ? "แก้ไขรายวิชา" : "สร้างรายวิชา", body);
+      activeModal.querySelector(".modal-actions [data-close]").addEventListener("click", closeModal);
+      activeModal.querySelector("#course-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        const payload = {
+          code: activeModal.querySelector("#f-code").value.trim(),
+          title: activeModal.querySelector("#f-title").value.trim(),
+          section: activeModal.querySelector("#f-section").value.trim(),
+          teacherId: dashUser.id
+        };
+        saveCourse(payload, courseId);
+        closeModal();
+        toastMessage(course ? "บันทึกการแก้ไขรายวิชาแล้ว" : "สร้างรายวิชาแล้ว");
+        renderTab("courses");
+      });
+    }
+
+    function showEnrollModal(courseId) {
+      const db = dashDB;
+      const course = courseById(db, courseId);
+      const students = db.users.filter(function (u) {
+        return u.role === "student";
+      });
+      const rows = students.map(function (student) {
+        const enrolled = course.students.indexOf(student.id) !== -1;
+        return '<label class="enroll-row"><input type="checkbox" value="' + esc(student.id) + '"' +
+          (enrolled ? " checked" : "") + " /> <span>" + esc(student.name) + " (" + esc(student.email) + ")</span></label>";
+      }).join("");
+      const body =
+        '<p class="muted">ติ๊ก/เอาออกเพื่อเพิ่มหรือนำนิสิตออกจากรายวิชา หรือกรอกอีเมลนิสิตใหม่</p>' +
+        '<div class="enroll-list">' + (rows || emptyNote("ยังไม่มีข้อมูลนิสิต")) + "</div>" +
+        '<form id="enroll-new" class="form-row"><div class="form-field" style="flex:1">' +
+        '<input class="form-input" id="enroll-email" placeholder="อีเมลนิสิตใหม่ เช่น name@ku.th" /></div>' +
+        '<button type="submit" class="btn btn-secondary btn-sm">เพิ่มนิสิตใหม่</button></form>' +
+        '<div class="modal-actions"><button type="button" class="btn btn-ghost" data-close>ปิด</button></div>';
+      openModal("จัดการนิสิต — " + course.title, body);
+      activeModal.querySelector(".modal-actions [data-close]").addEventListener("click", closeModal);
+      activeModal.querySelector(".enroll-list").querySelectorAll("input[type=checkbox]").forEach(function (box) {
+        box.addEventListener("change", function () {
+          if (box.checked) {
+            const student = findUserById(db, box.value);
+            addStudentToCourse(courseId, student.email);
+            toastMessage("เพิ่ม " + student.name + " เข้ารายวิชาแล้ว");
+          } else {
+            removeStudentFromCourse(courseId, box.value);
+            toastMessage("นำนิสิตออกจากรายวิชาแล้ว");
+          }
+          closeModal();
+          renderTab("courses");
+        });
+      });
+      activeModal.querySelector("#enroll-new").addEventListener("submit", function (event) {
+        event.preventDefault();
+        const value = activeModal.querySelector("#enroll-email").value.trim();
+        if (!value) {
+          return;
+        }
+        const user = addStudentToCourse(courseId, value);
+        closeModal();
+        toastMessage("เพิ่ม " + user.name + " เข้ารายวิชาแล้ว");
+        renderTab("courses");
+      });
+    }
+
+    /* ---------- Teacher: งานมอบหมาย ---------- */
+
+    function renderTeacherAssignments() {
+      const db = dashDB;
+      const courses = coursesByTeacher(db, dashUser.id);
+      let options = '<option value="all">ทุกวิชา</option>';
+      courses.forEach(function (course) {
+        options += '<option value="' + esc(course.id) + '">' + esc(course.code + " " + course.title) + "</option>";
+      });
+      let filtered = db.assignments.filter(function (assignment) {
+        return courses.some(function (course) {
+          return course.id === assignment.courseId;
+        });
+      });
+      if (dashCourseFilter !== "all") {
+        filtered = filtered.filter(function (assignment) {
+          return assignment.courseId === dashCourseFilter;
+        });
+      }
+      let html = '<div class="toolbar"><h2>งานมอบหมาย (' + filtered.length + ")</h2>" +
+        '<button type="button" class="btn btn-primary btn-sm" id="btn-add-assignment">+ สร้างงาน</button></div>' +
+        '<div class="dash-panel"><div class="toolbar" style="margin-bottom:.75rem">' +
+        '<label class="form-label" for="asg-filter">กรองตามวิชา</label>' +
+        '<select class="form-select" id="asg-filter" style="max-width:320px">' + options + "</select></div>";
+      if (!filtered.length) {
+        html += emptyNote("ยังไม่มีงาน — กดปุ่ม ‘สร้างงาน’");
+      } else {
+        html += '<div class="table-wrap"><table class="dash-table"><thead><tr>' +
+          "<th>รายวิชา</th><th>งาน</th><th>กำหนดส่ง</th><th>คะแนนเต็ม</th><th>ส่งแล้ว</th><th>จัดการ</th></tr></thead><tbody>";
+        filtered.forEach(function (assignment) {
+          const course = courseById(db, assignment.courseId);
+          const assignmentSubmissions = submissionsForAssignment(db, assignment.id);
+          const totalPossible = course.students.length * 1;
+          html += "<tr><td>" + esc(course.code) + "</td><td><strong>" + esc(assignment.title) + "</strong></td><td>" +
+            fmtDate(assignment.dueDate) + "</td><td>" + assignment.points + "</td><td>" +
+            assignmentSubmissions.length + " / " + totalPossible + "</td><td><div class='table-actions'>" +
+            '<button type="button" class="link-btn" data-edit-assignment="' + esc(assignment.id) + '">แก้ไข</button>' +
+            '<button type="button" class="danger-link" data-del-assignment="' + esc(assignment.id) + '">ลบ</button>' +
+            "</div></td></tr>";
+        });
+        html += "</tbody></table></div>";
+      }
+      html += "</div>";
+      return html;
+    }
+
+    function showAssignmentModal(assignmentId) {
+      const db = dashDB;
+      const assignment = assignmentId ? findByAssignment(db, assignmentId) : null;
+      const courses = coursesByTeacher(db, dashUser.id);
+      let options = courses.map(function (course) {
+        return '<option value="' + esc(course.id) + '"' + (assignment && assignment.courseId === course.id ? " selected" : "") + ">" +
+          esc(course.code + " " + course.title) + "</option>";
+      }).join("");
+      const body =
+        '<form id="assignment-form">' +
+        '<div class="form-field"><label class="form-label" for="f-asg-course">รายวิชา</label>' +
+        '<select class="form-select" id="f-asg-course">' + options + "</select></div>" +
+        '<div class="form-field"><label class="form-label" for="f-asg-title">หัวข้องาน</label>' +
+        '<input class="form-input" id="f-asg-title" value="' + esc(assignment ? assignment.title : "") + '" required /></div>' +
+        '<div class="form-field"><label class="form-label" for="f-asg-desc">คำอธิบาย</label>' +
+        '<textarea class="form-textarea" id="f-asg-desc">' + esc(assignment ? assignment.description || "" : "") + "</textarea></div>" +
+        '<div class="form-row">' +
+        '<div class="form-field"><label class="form-label" for="f-asg-due">กำหนดส่ง</label><input class="form-input" type="date" id="f-asg-due" value="' + esc(assignment ? assignment.dueDate : "") + '" required /></div>' +
+        '<div class="form-field"><label class="form-label" for="f-asg-points">คะแนนเต็ม</label><input class="form-input" type="number" id="f-asg-points" min="1" max="200" value="' + (assignment ? assignment.points : 100) + '" required /></div>' +
+        "</div>" +
+        '<div class="modal-actions"><button type="button" class="btn btn-ghost" data-close>ยกเลิก</button>' +
+        '<button type="submit" class="btn btn-primary">' + (assignment ? "บันทึกการแก้ไข" : "สร้างงาน") + "</button></div>" +
+        "</form>";
+      openModal(assignment ? "แก้ไขงานมอบหมาย" : "สร้างงานมอบหมาย", body);
+      activeModal.querySelector(".modal-actions [data-close]").addEventListener("click", closeModal);
+      activeModal.querySelector("#assignment-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        const payload = {
+          courseId: activeModal.querySelector("#f-asg-course").value,
+          title: activeModal.querySelector("#f-asg-title").value.trim(),
+          description: activeModal.querySelector("#f-asg-desc").value.trim(),
+          dueDate: activeModal.querySelector("#f-asg-due").value,
+          points: Number(activeModal.querySelector("#f-asg-points").value) || 100
+        };
+        saveAssignment(payload, assignmentId);
+        closeModal();
+        toastMessage(assignment ? "บันทึกการแก้ไขงานแล้ว" : "สร้างงานมอบหมายแล้ว");
+        renderTab("assignments");
+      });
+    }
+
+    /* ---------- Teacher: ตรวจงาน ---------- */
+
+    function renderTeacherGrading() {
+      const db = dashDB;
+      const courses = coursesByTeacher(db, dashUser.id);
+      if (!courses.length) {
+        return emptyNote("สร้างรายวิชาและงานมอบหมายก่อน เพื่อเริ่มตรวจงาน");
+      }
+      const assignments = [];
+      courses.forEach(function (course) {
+        assignmentsForCourse(db, course.id).forEach(function (assignment) {
+          assignments.push({ assignment: assignment, course: course });
+        });
+      });
+      if (!assignments.length) {
+        return emptyNote("ยังไม่มีงานมอบหมาย");
+      }
+      if (assignments.indexOf(dashGradeFilter) === -1 && !assignments.some(function (item) { return item.assignment.id === dashGradeFilter; })) {
+        dashGradeFilter = assignments[0].assignment.id;
+      }
+      const current = assignments.find(function (item) {
+        return item.assignment.id === dashGradeFilter;
+      }) || assignments[0];
+      const options = assignments.map(function (item) {
+        return '<option value="' + esc(item.assignment.id) + '"' + (item.assignment.id === current.assignment.id ? " selected" : "") + ">" +
+          esc(item.course.code + " — " + item.assignment.title) + "</option>";
+      }).join("");
+
+      let html = '<div class="toolbar"><h2>ตรวจงาน</h2></div>' +
+        '<div class="dash-panel"><div class="toolbar"><div>' +
+        '<label class="form-label" for="grade-filter">เลือกงาน</label>' +
+        '<select class="form-select" id="grade-filter" style="max-width:380px">' + options + "</select></div>" +
+        "<p class=\"muted\">กำหนดส่ง " + fmtDate(current.assignment.dueDate) + " · คะแนนเต็ม " + current.assignment.points + "</p></div>";
+
+      const students = current.course.students;
+      if (!students.length) {
+        html += emptyNote("ยังไม่มีนิสิตในรายวิชานี้");
+      } else {
+        html += '<div class="table-wrap"><table class="dash-table"><thead><tr>' +
+          "<th>นิสิต</th><th>สถานะ</th><th>ไฟล์</th><th>AI แนะนำ</th><th>คะแนน</th><th>จัดการ</th></tr></thead><tbody>";
+        students.forEach(function (studentId) {
+          const student = findUserById(db, studentId);
+          const submission = submissionFor(db, current.assignment.id, studentId);
+          const status = submissionStatus(current.assignment, submission);
+          const ai = submission && submission.ai;
+          html += "<tr><td><strong>" + esc(student.name) + "</strong></td><td>" + statusBadgeHtml(status) + "</td><td>" +
+            (submission ? fileChipHtml(submission.fileName, submission.fileType, submission.fileSize, submission.fileData) : '<span class="muted">—</span>') + "</td><td>" +
+            (ai ? '<span class="ai-suggest">' + ai.suggestedScore + "/" + current.assignment.points + "</span>" : '<span class="muted">—</span>') + "</td><td>" +
+            (submission && submission.score !== null ? "<strong>" + submission.score + " / " + current.assignment.points + "</strong>" : '<span class="muted">—</span>') + "</td><td>" +
+            (submission ? '<button type="button" class="link-btn" data-grade="' + esc(current.assignment.id) + "|" + esc(studentId) + '">ให้คะแนน</button>' : '<span class="muted">—</span>') +
+            "</td></tr>";
+        });
+        html += "</tbody></table></div>";
+      }
+      html += "</div>";
+      return html;
+    }
+
+    function showGradeModal(assignmentId, studentId) {
+      const db = dashDB;
+      const submission = submissionFor(db, assignmentId, studentId);
+      if (!submission) {
+        return;
+      }
+      const assignment = findByAssignment(db, assignmentId);
+      const student = findUserById(db, studentId);
+      const ai = submission.ai;
+      let body = '<p class="muted">' + esc(student.name) + "</p>" +
+        "<p>" + fileChipHtml(submission.fileName, submission.fileType, submission.fileSize, submission.fileData) + "</p>";
+      if (ai) {
+        body += '<div class="ai-suggestion"><strong>AI แนะนำคะแนนเบื้องต้น: ' + ai.suggestedScore + "/" + assignment.points + "</strong>" +
+          '<ul>' + ai.improvements.map(function (item) { return "<li>" + esc(item) + "</li>"; }).join("") + "</ul>" +
+          '<p class="muted">' + esc(ai.feedback) + "</p></div>";
+      }
+      body += '<form id="grade-form">' +
+        '<div class="form-row">' +
+        '<div class="form-field"><label class="form-label" for="f-score">คะแนน (เต็ม ' + assignment.points + ")</label>" +
+        '<input class="form-input" type="number" id="f-score" min="0" max="' + assignment.points + '" value="' + (submission.score !== null ? submission.score : (ai ? ai.suggestedScore : "")) + '" required /></div>' +
+        "</div>" +
+        '<div class="form-field"><label class="form-label" for="f-feedback">Feedback</label>' +
+        '<textarea class="form-textarea" id="f-feedback">' + esc(submission.feedback || (ai ? ai.feedback : "")) + "</textarea></div>" +
+        '<div class="modal-actions"><button type="button" class="btn btn-ghost" data-close>ยกเลิก</button>' +
+        '<button type="submit" class="btn btn-primary">บันทึกคะแนน</button></div></form>';
+      openModal("ให้คะแนน / เขียน Feedback", body);
+      activeModal.querySelector(".modal-actions [data-close]").addEventListener("click", closeModal);
+      activeModal.querySelector("#grade-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        const score = activeModal.querySelector("#f-score").value;
+        const feedback = activeModal.querySelector("#f-feedback").value;
+        gradeSubmission(assignmentId, studentId, score, feedback);
+        closeModal();
+        toastMessage("บันทึกคะแนน " + score + "/" + assignment.points + " ให้ " + student.name);
+        renderTab("grading");
+      });
+    }
+
+    /* ---------- Teacher: นักเรียนเสี่ยง ---------- */
+
+    function renderTeacherRisk() {
+      const db = dashDB;
+      const teacherCourses = coursesByTeacher(db, dashUser.id);
+      const studentIds = [];
+      teacherCourses.forEach(function (course) {
+        course.students.forEach(function (id) {
+          if (studentIds.indexOf(id) === -1) {
+            studentIds.push(id);
+          }
+        });
+      });
+      const counts = { low: 0, medium: 0, high: 0 };
+      const list = studentIds.map(function (id) {
+        const student = findUserById(db, id);
+        const risk = computeRisk(db, id);
+        counts[risk.level] += 1;
+        return { student: student, risk: risk };
+      });
+      let html = '<div class="dash-stats">' +
+        statCard(counts.low, "ความเสี่ยงต่ำ") +
+        statCard(counts.medium, "ความเสี่ยงปานกลาง") +
+        statCard(counts.high, "ความเสี่ยงสูง") +
+        statCard(list.length, "นิสิตในระบบ") +
+        "</div>";
+      html += '<div class="dash-panel"><div class="panel-head"><h2>รายชื่อนิสิตและสาเหตุความเสี่ยง</h2>' +
+        '<a class="btn btn-primary btn-sm" href="risk.html">หน้า Risk Detail</a></div>';
+      if (!list.length) {
+        html += emptyNote("ยังไม่มีนิสิตในรายวิชาของคุณ");
+      } else {
+        html += '<div class="table-wrap"><table class="dash-table"><thead><tr>' +
+          "<th>ชื่อ</th><th>เข้าเรียน</th><th>งานค้าง</th><th>คะแนนเฉลี่ย</th><th>ระดับ</th></tr></thead><tbody>";
+        list.forEach(function (item) {
+          html += "<tr><td><strong>" + esc(item.student.name) + "</strong></td><td>" + item.risk.attendancePct + "%</td><td>" +
+            item.risk.overdueCount + " งาน</td><td>" + item.risk.avgScore + "</td><td>" + riskBadge(item.risk) + "</td></tr>";
+        });
+        html += "</tbody></table></div>";
+      }
+      html += "</div>";
+      return html;
+    }
+
+    /* ---------- Student: งานของฉัน + ส่งงาน ---------- */
+
+    function renderStudentAssignments() {
+      const db = dashDB;
+      const rows = assignmentsWithStatusFor(db, dashUser.id);
+      let html = '<div class="toolbar"><h2>งานทั้งหมดของฉัน (' + rows.length + ")</h2></div>";
+
+      const withAi = rows.filter(function (row) {
+        return row.submission && row.submission.ai;
+      }).slice(0, 2);
+      if (withAi.length) {
+        html += '<div class="dash-panel"><h2>ข้อเสนอแนะจาก AI (ล่าสุด)</h2>';
+        withAi.forEach(function (row) {
+          html += '<div class="ai-suggestion" style="margin-bottom:.5rem"><strong>' + esc(row.assignment.title) +
+            " — AI แนะนำ: " + row.submission.ai.suggestedScore + "</strong>" +
+            "<ul>" + row.submission.ai.improvements.map(function (item) { return "<li>" + esc(item) + "</li>"; }).join("") +
+            "</ul><p class=\"muted\">" + esc(row.submission.ai.feedback) + "</p></div>";
+        });
+        html += "</div>";
+      }
+
+      if (!rows.length) {
+        return html + emptyNote("ยังไม่มีงานมอบหมาย");
+      }
+      html += '<div class="dash-panel"><div class="table-wrap"><table class="dash-table"><thead><tr>' +
+        "<th>รายวิชา</th><th>งาน</th><th>กำหนดส่ง</th><th>สถานะ</th><th>คะแนน</th><th>ไฟล์</th><th></th></tr></thead><tbody>";
+      rows.forEach(function (row) {
+        const canSubmit = row.status !== "submitted";
+        html += "<tr><td>" + esc(row.course.code) + "</td><td><strong>" + esc(row.assignment.title) + "</strong></td><td>" +
+          fmtDate(row.assignment.dueDate) + "</td><td>" + statusBadgeHtml(row.status) + "</td><td>" +
+          (row.submission && row.submission.score !== null ? "<strong>" + row.submission.score + "</strong>" : '<span class="muted">—</span>') + "</td><td>" +
+          (row.submission ? fileChipHtml(row.submission.fileName, row.submission.fileType, row.submission.fileSize, row.submission.fileData) : '<span class="muted">—</span>') + "</td><td>" +
+          (canSubmit ? '<button type="button" class="btn btn-primary btn-sm" data-upload="' + esc(row.assignment.id) + '">ส่งงาน</button>' : "") +
+          "</td></tr>";
+      });
+      html += "</tbody></table></div></div>";
+      return html;
+    }
+
+    function showUploadModal(assignmentId) {
+      const db = dashDB;
+      const assignment = findByAssignment(db, assignmentId);
+      const body =
+        '<p class="muted">เลือกไฟล์ผลงานของคุณ (รองรับ PDF, DOCX หรือรูปภาพ)</p>' +
+        '<div class="upload-zone" id="st-upload-zone"><p>คลิกเพื่อเลือกไฟล์</p>' +
+        '<input type="file" id="st-file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden /></div>' +
+        '<p class="file-name" id="st-file-name"></p>' +
+        '<div class="loading" id="st-loading"><span class="dot"></span><span class="dot"></span><span class="dot"></span>' +
+        "<p>AI กำลังอ่านไฟล์และวิเคราะห์เนื้อหา…</p></div>" +
+        '<div id="st-ai-result" style="display:none"></div>';
+      openModal("ส่งงาน — " + assignment.title, body);
+      const zone = activeModal.querySelector("#st-upload-zone");
+      const input = activeModal.querySelector("#st-file");
+      const fileNameEl = activeModal.querySelector("#st-file-name");
+      const loadingEl = activeModal.querySelector("#st-loading");
+      const resultEl = activeModal.querySelector("#st-ai-result");
+
+      zone.addEventListener("click", function () {
+        input.click();
+      });
+      input.addEventListener("change", function () {
+        const file = input.files && input.files[0];
+        if (!file) {
+          return;
+        }
+        if (!/\.(pdf|doc|docx|png|jpe?g)$/i.test(file.name)) {
+          toastMessage("รองรับเฉพาะไฟล์ PDF, DOCX และรูปภาพ");
+          return;
+        }
+        fileNameEl.textContent = "ไฟล์ที่เลือก: " + file.name + " (" + Math.round(file.size / 1024) + " KB)";
+        zone.style.display = "none";
+        loadingEl.style.display = "block";
+        readFileAsDataURL(file, function (dataUrl) {
+          setTimeout(function () {
+            loadingEl.style.display = "none";
+            const ai = aiGradeSubmission(file.name, file.type, file.size);
+            resultEl.innerHTML =
+              '<div class="ai-suggestion" style="border-left-color:#1aae39"><strong>AI วิเคราะห์ผลงาน: แนะนำ ' + ai.suggestedScore + "/" + assignment.points + "</strong>" +
+              '<ul>' + ai.improvements.map(function (item) { return "<li>" + esc(item) + "</li>"; }).join("") + "</ul>" +
+              '<p class="muted">' + esc(ai.feedback) + "</p></div>" +
+              '<div class="modal-actions">' +
+              '<button type="button" class="btn btn-ghost" id="st-cancel">ยกเลิก</button>' +
+              '<button type="button" class="btn btn-primary" id="st-confirm">ยืนยันส่งงาน</button></div>';
+            resultEl.style.display = "block";
+            activeModal.querySelector("#st-cancel").addEventListener("click", closeModal);
+            activeModal.querySelector("#st-confirm").addEventListener("click", function () {
+              submitAssignment(assignmentId, dashUser.id, {
+                name: file.name,
+                type: file.type || "application/octet-stream",
+                size: file.size,
+                data: dataUrl
+              });
+              closeModal();
+              toastMessage("ส่งงานเรียบร้อย — AI แนะนำคะแนน " + ai.suggestedScore);
+              renderTab("assignments");
+            });
+          }, 1100);
+        });
+      });
+    }
+
+    /* ---------- Parent: รายละเอียด ---------- */
+
+    function renderParentDetails() {
+      const db = dashDB;
+      const child = findByEmail(db, dashUser.linkedStudentEmail);
+      if (!child) {
+        return renderParentDashboard(db, dashUser);
+      }
+      const risk = computeRisk(db, child.id);
+      const rows = assignmentsWithStatusFor(db, child.id);
+      let html = '<div class="dash-panel dash-child-head"><h2>' + esc(child.name) + "</h2><p>" +
+        esc(child.email) + "</p>" + riskBadge(risk) + "</div>";
+
+      html += '<div class="dash-panel"><h2>การแจ้งเตือนล่าสุด</h2>';
+      const alerts = parentAlerts(db, child.id);
+      if (alerts.length) {
+        html += '<ul class="alert-list">' + alerts.map(function (item) {
+          return '<li class="alert-item">' + esc(item.text) + "</li>";
+        }).join("") + "</ul>";
+      } else {
+        html += emptyNote("ไม่มีการแจ้งเตือนใหม่");
+      }
+      html += "</div>";
+
+      html += '<div class="dash-panel"><h2>งานทั้งหมดของบุตรหลาน</h2>';
+      if (rows.length) {
+        html += '<div class="table-wrap"><table class="dash-table"><thead><tr>' +
+          "<th>รายวิชา</th><th>งาน</th><th>กำหนดส่ง</th><th>สถานะ</th><th>คะแนน</th></tr></thead><tbody>";
+        rows.forEach(function (row) {
+          html += "<tr><td>" + esc(row.course.code) + "</td><td>" + esc(row.assignment.title) + "</td><td>" +
+            fmtDate(row.assignment.dueDate) + "</td><td>" + statusBadgeHtml(row.status) + "</td><td>" +
+            (row.submission && row.submission.score !== null ? "<strong>" + row.submission.score + "</strong>" : '<span class="muted">—</span>') + "</td></tr>";
+        });
+        html += "</tbody></table></div>";
+      } else {
+        html += emptyNote("ยังไม่มีงาน");
+      }
+      html += "</div>";
+      return html;
+    }
+
+    /* ---------- จัดการ event หลัง render ---------- */
+
+    function installViewHandlers(viewKey) {
+      if (viewKey === "courses") {
+        const addBtn = document.getElementById("btn-add-course");
+        if (addBtn) {
+          addBtn.addEventListener("click", function () { showCourseModal(null); });
+        }
+        document.querySelectorAll("[data-edit-course]").forEach(function (button) {
+          button.addEventListener("click", function () { showCourseModal(button.dataset.editCourse); });
+        });
+        document.querySelectorAll("[data-enroll]").forEach(function (button) {
+          button.addEventListener("click", function () { showEnrollModal(button.dataset.enroll); });
+        });
+        document.querySelectorAll("[data-del-course]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const course = courseById(dashDB, button.dataset.delCourse);
+            if (confirm('ลบรายวิชา "' + course.title + '" พร้อมงานและการส่งทั้งหมด?')) {
+              deleteCourse(course.id);
+              toastMessage("ลบรายวิชาแล้ว");
+              renderTab("courses");
+            }
+          });
+        });
+        return;
+      }
+
+      if (viewKey === "assignments") {
+        if (dashUser.role === "student") {
+          document.querySelectorAll("[data-upload]").forEach(function (button) {
+            button.addEventListener("click", function () { showUploadModal(button.dataset.upload); });
+          });
+          return;
+        }
+        const addBtn = document.getElementById("btn-add-assignment");
+        if (addBtn) {
+          addBtn.addEventListener("click", function () { showAssignmentModal(null); });
+        }
+        const filter = document.getElementById("asg-filter");
+        if (filter) {
+          filter.addEventListener("change", function () {
+            dashCourseFilter = filter.value;
+            renderTab("assignments");
+          });
+        }
+        document.querySelectorAll("[data-edit-assignment]").forEach(function (button) {
+          button.addEventListener("click", function () { showAssignmentModal(button.dataset.editAssignment); });
+        });
+        document.querySelectorAll("[data-del-assignment]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const assignment = findByAssignment(dashDB, button.dataset.delAssignment);
+            if (confirm('ลบงาน "' + assignment.title + '" และการส่งทั้งหมด?')) {
+              deleteAssignment(assignment.id);
+              toastMessage("ลบงานแล้ว");
+              renderTab("assignments");
+            }
+          });
+        });
+        return;
+      }
+
+      if (viewKey === "grading") {
+        const filter = document.getElementById("grade-filter");
+        if (filter) {
+          filter.addEventListener("change", function () {
+            dashGradeFilter = filter.value;
+            renderTab("grading");
+          });
+        }
+        document.querySelectorAll("[data-grade]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const parts = button.dataset.grade.split("|");
+            showGradeModal(parts[0], parts[1]);
+          });
+        });
+      }
+    }
+
     function renderDashboard() {
       const user = getCurrentUser();
       if (!user) {
@@ -297,14 +976,16 @@
       document.getElementById("dash-greeting").textContent = "ยินดีต้อนรับ " + info.label;
       document.getElementById("dash-email").textContent = record.name + " · " + record.email;
 
-      const renderers = {
-        teacher: renderTeacherDashboard,
-        student: renderStudentDashboard,
-        parent: renderParentDashboard
-      };
-      const renderer = renderers[record.role] || renderStudentDashboard;
-      document.getElementById("dash-content").innerHTML = renderer(db, record);
+      dashDB = db;
+      dashUser = record;
+      renderTab("overview");
     }
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closeModal();
+      }
+    });
 
     renderDashboard();
   </script>

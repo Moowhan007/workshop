@@ -51,7 +51,60 @@
   <script src="data.js"></script>
   <script src="demo.js"></script>
   <script>
-    document.getElementById("app").innerHTML = renderAnalyticsPage();
+    function renderDbAnalytics(report) {
+      var maxDist = Math.max.apply(null, report.scoreDist.map(function (d) { return d.count; }) || [1]);
+      var distRows = report.scoreDist
+        .map(function (d) {
+          return barRow(d.range, d.count + " ผลงาน", maxDist ? Math.round((d.count / maxDist) * 100) : 0, "fill-blue");
+        })
+        .join("");
+      var completionRows = report.completion
+        .map(function (c) {
+          return barRow(c.name, c.value + "%", c.value, "fill-teal");
+        })
+        .join("");
+      var totalRisk = report.riskShare.low + report.riskShare.medium + report.riskShare.high;
+      var parts = [
+        { label: "Low Risk", value: report.riskShare.low, color: "#1aae39" },
+        { label: "Medium Risk", value: report.riskShare.medium, color: "#f5c518" },
+        { label: "High Risk", value: report.riskShare.high, color: "#e5484d" }
+      ];
+      var highPct = totalRisk ? Math.round((report.riskShare.high / totalRisk) * 100) : 0;
+      var labels = report.attendanceTrend && report.attendanceTrend.labels.length
+        ? report.attendanceTrend.labels
+        : ["ไม่มีข้อมูล"];
+      var values = report.attendanceTrend && report.attendanceTrend.values.length
+        ? report.attendanceTrend.values
+        : [0];
+      return (
+        '<section class="stats-card dash-stats">' +
+        statCard("Σ", "นิสิตในระบบ", report.studentCount, "จากชั้นเรียนที่เชื่อมต่อ", "tint-sky") +
+        statCard("✎", "งานมอบหมาย", report.assignmentCount, "รอตรวจ " + report.pendingCount + " ชิ้น", "tint-purple") +
+        statCard("★", "คะแนนเฉลี่ย", report.avgScore + "/100", "ผลงานที่ตรวจแล้ว", "tint-orange") +
+        "</section>" +
+        '<div class="chart-grid">' +
+        '<div class="chart-card card-wide"><h2>Attendance Trend</h2>' +
+        '<p class="muted">อัตราการเข้าเรียนเฉลี่ยรายสัปดาห์ (เทอมนี้)</p>' +
+        areaChart(values, labels) +
+        "</div>" +
+        '<div class="chart-card"><h2>Distribution ความเสี่ยง</h2>' +
+        '<div class="donut-wrap"><div class="donut" style="width:170px;height:170px;background:conic-gradient(' +
+        (totalRisk ? ("#1aae39 0 " + Math.round((report.riskShare.low / totalRisk) * 100) + "%,#f5c518 " + Math.round((report.riskShare.low / totalRisk) * 100) + "% " + Math.round(((report.riskShare.low + report.riskShare.medium) / totalRisk) * 100) + "%,#e5484d " + Math.round(((report.riskShare.low + report.riskShare.medium) / totalRisk) * 100) + "% 100%") : "transparent 0 100%") + '">' +
+        '<div class="donut-center"><span class="val">' + highPct + '%</span><span class="cap">นิสิต High Risk</span></div>' +
+        "</div></div><div class=\"legend\">" + legend(parts) + "</div></div>" +
+        '<div class="chart-card"><h2>Assignment Completion</h2>' +
+        '<p class="muted">อัตราการส่งงานตามรายวิชา</p>' + completionRows + "</div>" +
+        '<div class="chart-card"><h2>Score Distribution</h2>' +
+        '<p class="muted">การกระจายคะแนนของผลงานที่ตรวจแล้ว</p>' + distRows + "</div>" +
+        "</div>" +
+        '<p class="demo-tip">ตัวเลขมาจากข้อมูลจริงในระบบ หากยังไม่มีข้อมูลจะแสดงข้อมูลตัวอย่าง</p>'
+      );
+    }
+
+    var db = findAll();
+    var teacher = db ? (db.users.find(function (u) { return u.role === "teacher"; }) || null) : null;
+    var report = db && db.courses.length && teacher ? analyticsReport(db, teacher.id) : null;
+    document.getElementById("app").innerHTML = report ? renderDbAnalytics(report) : renderAnalyticsPage();
   </script>
 </body>
 </html>

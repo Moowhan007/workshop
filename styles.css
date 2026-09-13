@@ -1957,6 +1957,317 @@ main:focus {
   border-top: 1px solid var(--hairline);
 }
 
+/* ===== ระบบบริหารจัดการ (dashboard tabs & forms) ===== */
+.dash-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.dash-tab {
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-muted);
+  padding: 0.55rem 1.05rem;
+  border-radius: var(--radius-full);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.dash-tab:hover {
+  border-color: var(--primary);
+  color: var(--primary-active);
+}
+
+.dash-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.toolbar h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.form-field {
+  margin-bottom: 0.9rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  margin-bottom: 0.4rem;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font: inherit;
+  color: var(--ink);
+}
+
+.form-input:focus-visible,
+.form-select:focus-visible,
+.form-textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.form-textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.form-row .form-field {
+  flex: 1;
+}
+
+.table-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  white-space: nowrap;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--primary-active);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 0.88rem;
+}
+
+.danger-link {
+  color: #c93a3f;
+  background: none;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 0.88rem;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  max-width: 100%;
+}
+
+.file-chip strong {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-suggestion {
+  background: rgba(0, 117, 222, 0.06);
+  border: 1px solid rgba(0, 117, 222, 0.2);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  font-size: 0.88rem;
+}
+
+.ai-suggestion strong {
+  color: var(--primary-active);
+}
+
+.ai-suggestion ul {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-suggestion li {
+  padding: 0.15rem 0 0.15rem 1.1rem;
+  position: relative;
+}
+
+.ai-suggestion li::before {
+  content: "•";
+  position: absolute;
+  left: 0.2rem;
+  color: var(--primary);
+}
+
+/* ===== หน้าเชื่อมต่อ (Connector) ===== */
+.connect-prompt {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  padding: 2.5rem 1.75rem;
+}
+
+.connect-logo {
+  width: 3.4rem;
+  height: 3.4rem;
+  margin: 0 auto 1rem;
+  border-radius: 1rem;
+  background: #e0ebfd;
+  color: var(--primary-active);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.connect-logo svg {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.connect-form {
+  max-width: 460px;
+  margin: 1.25rem auto 0;
+  text-align: left;
+}
+
+.connect-form-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.connect-form-row .form-input {
+  flex: 1;
+}
+
+.connect-hint {
+  font-size: 0.78rem;
+  margin-top: 0.6rem;
+}
+
+.connect-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+  text-align: left;
+}
+
+.connect-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.btn-ghost-dark {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: var(--surface);
+  box-shadow: none;
+}
+
+.btn-ghost-dark:hover {
+  border-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.connect-stat-value {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--primary-active);
+}
+
+.connect-stat-label {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  margin-top: 0.25rem;
+}
+
+.modal-body {
+  margin-top: 0.85rem;
+}
+
+.enroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.enroll-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.enroll-row:hover {
+  background: var(--surface-soft);
+}
+
+.enroll-row input {
+  accent-color: var(--primary);
+  width: 1rem;
+  height: 1rem;
+}
+
+.ai-suggest {
+  display: inline-block;
+  background: rgba(0, 117, 222, 0.09);
+  color: var(--primary-active);
+  border-radius: var(--radius-full);
+  padding: 0.25rem 0.7rem;
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+
 @media (max-width: 960px) {
   .services-grid {
     grid-template-columns: repeat(2, 1fr);

@@ -51,7 +51,56 @@
   <script src="data.js"></script>
   <script src="demo.js"></script>
   <script>
-    document.getElementById("app").innerHTML = renderRiskPage();
+    function renderDbRisk(db, summary) {
+      const parts = [
+        { label: "Low Risk", value: summary.counts.low, color: "#1aae39" },
+        { label: "Medium Risk", value: summary.counts.medium, color: "#f5c518" },
+        { label: "High Risk", value: summary.counts.high, color: "#e5484d" }
+      ];
+      var rows = summary.list
+        .filter(function (item) {
+          return item.risk.level === "high" || item.risk.level === "medium";
+        })
+        .map(function (item) {
+          var r = item.risk;
+          var overduePct = Math.min(100, r.overdueCount * 25);
+          return (
+            "<tr><td><strong>" + esc(item.student.name) + "</strong></td>" +
+            "<td>" + riskBadge(r.level) + "</td>" +
+            '<td><div class="mini-row"><span>เข้าเรียน</span>' + barRow("", r.attendancePct + "%", r.attendancePct, r.level === "high" ? "fill-danger" : r.level === "medium" ? "fill-warn" : "") + "</div>" +
+            '<div class="mini-row"><span>ค้างส่ง</span>' + barRow("", r.overdueCount + " งาน", overduePct, r.level === "high" ? "fill-danger" : r.level === "medium" ? "fill-warn" : "") + "</div>" +
+            '<div class="mini-row"><span>คะแนน</span>' + barRow("", r.avgScore + "/100", r.avgScore, r.level === "high" ? "fill-danger" : r.level === "medium" ? "fill-warn" : "") + "</div></td></tr>"
+          );
+        })
+        .join("");
+      var share = summary.total ? Math.round((summary.counts.high / summary.total) * 100) : 0;
+      return (
+        '<section class="stats-card dash-stats">' +
+        statCard('<span class="risk-dot risk-low"></span>', "Low Risk", summary.counts.low, "เรียนปกติ", "tint-teal") +
+        statCard('<span class="risk-dot risk-medium"></span>', "Medium Risk", summary.counts.medium, "ต้องติดตาม", "tint-orange") +
+        statCard('<span class="risk-dot risk-high"></span>', "High Risk", summary.counts.high, "ต้องดูแลเร่งด่วน", "tint-pink") +
+        "</section>" +
+        '<p class="demo-tip">AI วิเคราะห์จากข้อมูลจริงในระบบ: คะแนนเฉลี่ย สถานะการส่งงาน และการเข้าเรียน</p>' +
+        '<div class="chart-grid"><div class="chart-card"><h2>สัดส่วนความเสี่ยงของนิสิต ' + summary.total + " คน</h2>" +
+        '<div class="donut-wrap">' + donut(parts, 200, share + "%", "อยู่ในกลุ่มเสี่ยง") + "</div>" +
+        "<div class=\"legend\">" + legend(parts) + "</div></div>" +
+        '<div class="chart-card"><h2>เกณฑ์การวิเคราะห์</h2>' +
+        '<div class="criteria"><h3>เข้าเรียน</h3>' + barRow("≥ 85%", "ปกติ", 85) +
+        barRow("70 – 84%", "เสี่ยงปานกลาง", 70, "fill-warn") +
+        barRow("< 70%", "เสี่ยงสูง", 40, "fill-danger") + "</div>" +
+        '<div class="criteria"><h3>งานค้างส่ง + คะแนน</h3>' +
+        '<p class="muted">ค้างส่ง 2 งานขึ้นไป และคะแนนเฉลี่ยต่ำกว่า 60 จะถูกจัดเป็น High Risk</p></div>' +
+        "</div></div>" +
+        '<div class="dash-panel"><div class="panel-head"><h2>รายชื่อนิสิตที่ต้องเฝ้าระวัง</h2><a class="btn btn-primary btn-sm" href="analytics.html">ดู Analytics</a></div>' +
+        '<div class="table-wrap"><table class="dash-table"><thead><tr><th>ชื่อ</th><th>ระดับ</th><th style="min-width:300px">องค์ประกอบ</th></tr></thead>' +
+        "<tbody>" + rows + "</tbody></table></div></div>"
+      );
+    }
+
+    var db = findAll();
+    var summary = db && db.courses.length ? riskSummary(db) : null;
+    document.getElementById("app").innerHTML =
+      summary && summary.total ? renderDbRisk(db, summary) : renderRiskPage();
   </script>
 </body>
 </html>

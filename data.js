@@ -256,6 +256,21 @@ function createUser(email, role) {
   return user;
 }
 
+function createUserWith(db, email, role) {
+  const existing = findByEmail(db, email);
+  if (existing) {
+    return existing;
+  }
+  const user = {
+    id: uid("u"),
+    email: email,
+    role: role,
+    name: email.split("@")[0]
+  };
+  db.users.push(user);
+  return user;
+}
+
 function findUserById(db, id) {
   return db.users.find(function (user) {
     return user.id === id;
@@ -569,4 +584,531 @@ function analyzeSubmission(text, fileName) {
     suggestedScore: null,
     feedback: ""
   };
+}
+
+/* =========================================================
+   ส่วนขยาย: ระบบบริหารจัดการ (CRUD) รายวิชา งาน การส่งและการตรวจ
+   ========================================================= */
+
+function assignmentsForCourse(db, courseId) {
+  return db.assignments.filter(function (assignment) {
+    return assignment.courseId === courseId;
+  });
+}
+
+function saveCourse(payload, courseId) {
+  const db = findAll();
+  if (courseId) {
+    const course = courseById(db, courseId);
+    if (!course) {
+      return null;
+    }
+    Object.assign(course, payload, { id: course.id });
+    saveDB(db);
+    return course;
+  }
+  const course = Object.assign({ id: uid("c"), students: [] }, payload);
+  db.courses.push(course);
+  saveDB(db);
+  return course;
+}
+
+function deleteCourse(courseId) {
+  const db = findAll();
+  const courseAssignmentIds = assignmentsForCourse(db, courseId).map(function (a) {
+    return a.id;
+  });
+  db.courses = db.courses.filter(function (course) {
+    return course.id !== courseId;
+  });
+  db.assignments = db.assignments.filter(function (assignment) {
+    return assignment.courseId !== courseId;
+  });
+  db.submissions = db.submissions.filter(function (submission) {
+    return courseAssignmentIds.indexOf(submission.assignmentId) === -1;
+  });
+  db.attendance = db.attendance.filter(function (row) {
+    return row.courseId !== courseId;
+  });
+  saveDB(db);
+}
+
+function addStudentToCourse(courseId, emailOrName) {
+  const db = findAll();
+  const course = courseById(db, courseId);
+  if (!course) {
+    return null;
+  }
+  let email = emailOrName;
+  if (typeof email === "string" && email.indexOf("@") === -1) {
+    email = email.replace(/\s+/g, "").toLowerCase() + "@student.ku.th";
+  }
+  let user = createUser(email, "student");
+  if (course.students.indexOf(user.id) === -1) {
+    course.students.push(user.id);
+  }
+  if (attendanceRowsForStudent(db, user.id).length === 0) {
+    db.attendance.push.apply(db.attendance, makeAttendance(user.id, courseId, "2026-08-01", 9, 10));
+  }
+  saveDB(db);
+  return user;
+}
+
+function removeStudentFromCourse(courseId, studentId) {
+  const db = findAll();
+  const course = courseById(db, courseId);
+  if (!course) {
+    return;
+  }
+  course.students = course.students.filter(function (id) {
+    return id !== studentId;
+  });
+  saveDB(db);
+}
+
+function saveAssignment(payload, assignmentId) {
+  const db = findAll();
+  if (assignmentId) {
+    const assignment = findByAssignment(db, assignmentId);
+    if (!assignment) {
+      return null;
+    }
+    Object.assign(assignment, payload);
+    saveDB(db);
+    return assignment;
+  }
+  const assignment = Object.assign({ id: uid("a") }, payload);
+  db.assignments.push(assignment);
+  saveDB(db);
+  return assignment;
+}
+
+function deleteAssignment(assignmentId) {
+  const db = findAll();
+  db.assignments = db.assignments.filter(function (assignment) {
+    return assignment.id !== assignmentId;
+  });
+  db.submissions = db.submissions.filter(function (submission) {
+    return submission.assignmentId !== assignmentId;
+  });
+  saveDB(db);
+}
+
+function submissionsForAssignment(db, assignmentId) {
+  return db.submissions.filter(function (submission) {
+    return submission.assignmentId === assignmentId;
+  });
+}
+
+const AI_STRENGTHS_POOL = [
+  "ตอบคำถามครบถ้วนตามโจทย์",
+  "วางโครงสร้างเนื้อหาเป็นลำดับ อ่านเข้าใจง่าย",
+  "มีตัวอย่างประกอบการอธิบายในแต่ละขั้นตอน",
+  "ใช้ภาษาที่ถูกต้องและกระชับ",
+  "โค้ดเป็นระเบียบ แยกส่วนการทำงานชัดเจน",
+  "อธิบายวิธีคิดทีละขั้นตอนจนเห็นที่มาของคำตอบ"
+];
+
+const AI_IMPROVEMENTS_POOL = [
+  "เพิ่มแหล่งอ้างอิงในส่วนท้ายของงาน",
+  "ขยายเนื้อหาในส่วนสรุปให้ละเอียดขึ้น",
+  "ระบุสมมติฐานหรือขอบเขตของงานให้ชัดเจน",
+  "เพิ่มการตรวจสอบข้อผิดพลาดของข้อมูลนำเข้า",
+  "จัดรูปแบบการแสดงผลให้อ่านง่ายขึ้น",
+  "ทบทวนการคำนวณก่อนส่งเพื่อลดการผิดพลาดเล็กน้อย"
+];
+
+function hashString(value) {
+  let hash = 0;
+  const str = String(value || "");
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function aiGradeSubmission(fileName, fileType, size) {
+  const seed = hashString(fileName || "") + Math.max(0, Number(size) || 0);
+  const pick = function (pool) {
+    return pool.sort(function () {
+      return (seed % 7919) - 4000;
+    }).slice(0, 2);
+  };
+  const suggestedScore = Math.min(98, 60 + (seed % 36));
+  let feedback = "";
+  if (suggestedScore >= 90) {
+    feedback = "ผลงานอยู่ในระดับดีเยี่ยม เนื้อหาครบถ้วนและมีคุณภาพสูง ลองยกระดับด้วยการเพิ่มมุมมองหรือตัวอย่างเพิ่มเติม";
+  } else if (suggestedScore >= 75) {
+    feedback = "ผลงานโดยรวมอยู่ในเกณฑ์ดี หากปรับปรุงตามข้อเสนอแนะจะทำให้งานมีคุณภาพสูงขึ้นไปอีก";
+  } else if (suggestedScore >= 60) {
+    feedback = "ผลงานพอใช้และผ่านเกณฑ์ แต่ยังต้องเติมเต็มรายละเอียดตามข้อเสนอแนะ เพื่อให้ได้คะแนนที่ดีขึ้น";
+  } else {
+    feedback = "ควรทบทวนเนื้อหาหลักของวิชาและทำความเข้าใจโจทย์ให้มากขึ้น ก่อนลงมือทำชิ้นถัดไป";
+  }
+  return {
+    strengths: pick(AI_STRENGTHS_POOL),
+    improvements: pick(AI_IMPROVEMENTS_POOL),
+    suggestedScore: suggestedScore,
+    feedback: feedback
+  };
+}
+
+function submitAssignment(assignmentId, studentId, fileInfo) {
+  const db = findAll();
+  const assignment = findByAssignment(db, assignmentId);
+  if (!assignment) {
+    return null;
+  }
+  const now = todayISO();
+  const existing = submissionFor(db, assignmentId, studentId);
+  const ai = aiGradeSubmission(fileInfo.name, fileInfo.type, fileInfo.size);
+  const data = {
+    assignmentId: assignmentId,
+    studentId: studentId,
+    submittedAt: now,
+    fileName: fileInfo.name,
+    fileType: fileInfo.type,
+    fileSize: fileInfo.size || 0,
+    fileData: fileInfo.data || null,
+    ai: ai,
+    score: null,
+    feedback: ""
+  };
+  if (existing) {
+    existing.submittedAt = now;
+    existing.fileName = data.fileName;
+    existing.fileType = data.fileType;
+    existing.fileSize = data.fileSize;
+    existing.fileData = data.fileData;
+    existing.ai = ai;
+    existing.score = null;
+    existing.feedback = "";
+    saveDB(db);
+    return existing;
+  }
+  data.id = uid("s");
+  db.submissions.push(data);
+  saveDB(db);
+  return data;
+}
+
+function gradeSubmission(assignmentId, studentId, score, feedback) {
+  const db = findAll();
+  const submission = submissionFor(db, assignmentId, studentId);
+  if (!submission) {
+    return null;
+  }
+  submission.score = Number(score);
+  submission.feedback = String(feedback || "").trim();
+  saveDB(db);
+  return submission;
+}
+
+function getConnection(provider) {
+  const db = findAll();
+  const connections = db.connections || {};
+  return connections[provider] || { status: "disconnected" };
+}
+
+function setConnection(provider, status, meta) {
+  const db = findAll();
+  db.connections = db.connections || {};
+  db.connections[provider] = Object.assign({ status: status }, meta || {});
+  saveDB(db);
+  return db.connections[provider];
+}
+
+function riskSummary(db) {
+  const studentIds = [];
+  db.courses.forEach(function (course) {
+    course.students.forEach(function (studentId) {
+      if (studentIds.indexOf(studentId) === -1) {
+        studentIds.push(studentId);
+      }
+    });
+  });
+  const counts = { low: 0, medium: 0, high: 0 };
+  const list = studentIds.map(function (studentId) {
+    const student = findUserById(db, studentId);
+    const risk = computeRisk(db, studentId);
+    counts[risk.level] = counts[risk.level] + 1;
+    return { student: student, risk: risk };
+  });
+  return { counts: counts, list: list, total: studentIds.length };
+}
+
+function analyticsReport(db, teacherId) {
+  const teacher = teacherAnalytics(db, teacherId);
+  const teacherCourseIds = teacher.courses.map(function (course) {
+    return course.id;
+  });
+
+  const attRows = db.attendance.filter(function (row) {
+    return teacherCourseIds.indexOf(row.courseId) !== -1;
+  });
+  const byDate = {};
+  attRows.forEach(function (row) {
+    if (!byDate[row.date]) {
+      byDate[row.date] = { present: 0, total: 0 };
+    }
+    if (row.present) {
+      byDate[row.date].present += 1;
+    }
+    byDate[row.date].total += 1;
+  });
+  const sortedDates = Object.keys(byDate).sort().slice(-8);
+
+  const buckets = [
+    { range: "0-49", count: 0 },
+    { range: "50-59", count: 0 },
+    { range: "60-69", count: 0 },
+    { range: "70-79", count: 0 },
+    { range: "80-89", count: 0 },
+    { range: "90-100", count: 0 }
+  ];
+  const teacherAssignmentIds = db.assignments.filter(function (a) {
+    return teacherCourseIds.indexOf(a.courseId) !== -1;
+  }).map(function (a) {
+    return a.id;
+  });
+  db.submissions.forEach(function (submission) {
+    if (teacherAssignmentIds.indexOf(submission.assignmentId) === -1) {
+      return;
+    }
+    if (submission.score === null || submission.score === undefined) {
+      return;
+    }
+    let index = Math.floor(submission.score / 10);
+    index = index < 0 ? 0 : index > 10 ? 10 : index;
+    if (index >= 9) {
+      buckets[5].count += 1;
+    } else if (index >= 8) {
+      buckets[4].count += 1;
+    } else if (index >= 7) {
+      buckets[3].count += 1;
+    } else if (index >= 6) {
+      buckets[2].count += 1;
+    } else if (index >= 5) {
+      buckets[1].count += 1;
+    } else {
+      buckets[0].count += 1;
+    }
+  });
+
+  const riskShare = riskSummary(db).counts;
+
+  return {
+    attendanceTrend: {
+      labels: sortedDates.map(function (date, i) {
+        return "W" + (i + 1);
+      }),
+      values: sortedDates.map(function (date) {
+        const bucket = byDate[date];
+        return bucket.total ? Math.round((bucket.present / bucket.total) * 100) : 0;
+      })
+    },
+    scoreDist: buckets,
+    completion: teacher.perCourse.map(function (item) {
+      return { name: item.course.code + " " + item.course.title, value: item.submissionRate };
+    }),
+    courseScores: teacher.perCourse.map(function (item) {
+      return { name: item.course.code + " " + item.course.title, value: item.avgScore };
+    }),
+    riskShare: riskShare,
+    avgScore: teacher.avgScore,
+    pendingCount: teacher.pendingCount,
+    studentCount: teacher.studentCount,
+    assignmentCount: teacher.assignmentCount,
+    courses: teacher.courses.length
+  };
+}
+
+function syncFromGoogle(accountEmail) {
+  const db = findAll();
+  const teacher = db.users.find(function (u) {
+    return u.role === "teacher";
+  }) || createUserWith(db, "teacher@ku.th", "teacher");
+
+  const externalCourses = [
+    { code: "01418112", title: "การเขียนโปรแกรมคอมพิวเตอร์", section: "1", assignments: 4,
+      students: ["กิตติ วิริยะ", "มานะ ขยันดี", "สุดา เร่งรีบ", "เพ็ญศรี ใจเย็น"] },
+    { code: "01417167", title: "สถิติวิศวกรรม", section: "2", assignments: 3,
+      students: ["ชัย แน่วแน่", "ทศพล มั่นคง", "บุญมี สุขใจ"] },
+    { code: "01355111", title: "แคลคูลัสสำหรับวิศวกร", section: "1", assignments: 5,
+      students: ["ส้มโอ พร้อมเลิศ", "แตงโม รักเรียน", "มังคุด ขยัน"] }
+  ];
+
+  let addedCourses = 0;
+  let addedAssignments = 0;
+  let addedStudents = 0;
+
+  externalCourses.forEach(function (external) {
+    let course = db.courses.find(function (c) {
+      return c.teacherId === teacher.id && c.code === external.code;
+    });
+    if (!course) {
+      course = {
+        id: uid("c"),
+        code: external.code,
+        title: external.title,
+        section: external.section,
+        teacherId: teacher.id,
+        students: []
+      };
+      db.courses.push(course);
+      addedCourses += 1;
+    }
+    for (let i = 1; i <= external.assignments; i++) {
+      const title = external.title.split(" ")[0] + " ชุดที่ " + i;
+      const duplicate = db.assignments.some(function (a) {
+        return a.courseId === course.id && a.title === title;
+      });
+      if (!duplicate) {
+        const due = new Date();
+        due.setDate(due.getDate() + (10 + i * 3));
+        db.assignments.push({
+          id: uid("a"),
+          courseId: course.id,
+          title: title,
+          description: "งานที่ซิงค์จาก Google Classroom",
+          dueDate: due.toISOString().slice(0, 10),
+          points: i % 2 ? 100 : 50
+        });
+        addedAssignments += 1;
+      }
+    }
+    external.students.forEach(function (name) {
+      const email = name + "@classroom.demo";
+      let user = findByEmail(db, email);
+      if (!user) {
+        user = { id: uid("u"), email: email, role: "student", name: name };
+        db.users.push(user);
+        addedStudents += 1;
+      }
+      if (course.students.indexOf(user.id) === -1) {
+        course.students.push(user.id);
+      }
+      if (attendanceRowsForStudent(db, user.id).length === 0) {
+        db.attendance.push.apply(db.attendance, makeAttendance(user.id, course.id, "2026-08-01", 8, 10));
+      }
+    });
+  });
+
+  const meta = {
+    status: "connected",
+    account: accountEmail,
+    lastSync: new Date().toLocaleString("th-TH"),
+    totals: { courses: addedCourses, assignments: addedAssignments, students: addedStudents },
+    courses: externalCourses.map(function (external) {
+      const syncedCourse = db.courses.find(function (c) {
+        return c.teacherId === teacher.id && c.code === external.code;
+      });
+      return {
+        code: external.code,
+        title: external.title,
+        assignments: syncedCourse ? assignmentsForCourse(db, syncedCourse.id).length : 0,
+        students: syncedCourse ? syncedCourse.students.length : 0
+      };
+    })
+  };
+
+  db.connections = db.connections || {};
+  db.connections.google = meta;
+  saveDB(db);
+  return meta;
+}
+
+function syncFromTeams(accountEmail) {
+  const db = findAll();
+  const teacher = db.users.find(function (u) {
+    return u.role === "teacher";
+  }) || createUserWith(db, "teacher@ku.th", "teacher");
+
+  const externalClasses = [
+    { name: "โครงสร้างข้อมูลและอัลกอริทึม", assignments: 4, students: ["ไกรสร ใจดี", "ณัฐวุฒิ พร้อม", "พิมพ์ชนก เรียบร้อย"] },
+    { name: "ระบบฐานข้อมูล", assignments: 5, students: ["ศุภกร ขยัน", "ณัชชา มั่นคง", "วราภรณ์ ใจเย็น"] },
+    { name: "วิศวกรรมซอฟต์แวร์", assignments: 3, students: ["ธนกร วิริยะ", "จิดาภา สุข", "กันตินันท์ แน่วแน่"] }
+  ];
+
+  let addedClasses = 0;
+  let addedAssignments = 0;
+  let addedStudents = 0;
+
+  externalClasses.forEach(function (external) {
+    let course = db.courses.find(function (c) {
+      return c.teacherId === teacher.id && c.title === external.name;
+    });
+    if (!course) {
+      course = {
+        id: uid("c"),
+        code: "MS" + String(db.courses.length + 1).padStart(2, "0"),
+        title: external.name,
+        section: "T",
+        teacherId: teacher.id,
+        students: []
+      };
+      db.courses.push(course);
+      addedClasses += 1;
+    }
+    for (let i = 1; i <= external.assignments; i++) {
+      const title = "Assignment " + i + " — " + external.name.split(" ")[0];
+      const duplicate = db.assignments.some(function (a) {
+        return a.courseId === course.id && a.title === title;
+      });
+      if (!duplicate) {
+        const due = new Date();
+        due.setDate(due.getDate() + (7 + i * 2));
+        db.assignments.push({
+          id: uid("a"),
+          courseId: course.id,
+          title: title,
+          description: "Assignment ดึงผ่าน Microsoft Graph API",
+          dueDate: due.toISOString().slice(0, 10),
+          points: 100
+        });
+        addedAssignments += 1;
+      }
+    }
+    external.students.forEach(function (name) {
+      const email = name + "@teams.demo";
+      let user = findByEmail(db, email);
+      if (!user) {
+        user = { id: uid("u"), email: email, role: "student", name: name };
+        db.users.push(user);
+        addedStudents += 1;
+      }
+      if (course.students.indexOf(user.id) === -1) {
+        course.students.push(user.id);
+      }
+      if (attendanceRowsForStudent(db, user.id).length === 0) {
+        db.attendance.push.apply(db.attendance, makeAttendance(user.id, course.id, "2026-08-01", 9, 10));
+      }
+    });
+  });
+
+  const meta = {
+    status: "connected",
+    account: accountEmail,
+    lastSync: new Date().toLocaleString("th-TH"),
+    totals: { classes: addedClasses, assignments: addedAssignments, students: addedStudents },
+    classes: externalClasses.map(function (external) {
+      const syncedCourse = db.courses.find(function (c) {
+        return c.teacherId === teacher.id && c.title === external.name;
+      });
+      return {
+        name: external.name,
+        assignments: syncedCourse ? assignmentsForCourse(db, syncedCourse.id).length : 0,
+        students: syncedCourse ? syncedCourse.students.length : 0
+      };
+    })
+  };
+
+  db.connections = db.connections || {};
+  db.connections.microsoft = meta;
+  saveDB(db);
+  return meta;
+}
+
+function disconnectProvider(provider) {
+  setConnection(provider, "disconnected");
 }
